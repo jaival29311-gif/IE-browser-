@@ -1,0 +1,9 @@
+settings.gradle
+build.gradle
+app/build.gradle
+app/src/main/AndroidManifest.xml
+app/src/main/res/values/colors.xml
+app/src/main/res/drawable/beveled_button.xml
+app/src/main/res/layout/activity_main.xml
+app/src/main/java/com/example/ie1browser/MainActivity.kt
+.github/workflows/build.yml
