@@ -17,29 +17,30 @@ const server = http.createServer(async (req, res) => {
 
     let browser;
     try {
-        // These flags force the browser to use minimum memory
         browser = await chromium.launch({ 
             headless: true,
-            args: [
-                '--no-sandbox', 
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--single-process',
-                '--no-zygote',
-                '--disable-gpu'
-            ] 
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process', '--no-zygote']
         });
-        const page = await browser.newPage({ viewport: { width: 360, height: 640 } });
+        
+        // WE SET THE HEIGHT TO 480 SO IT FITS PERFECTLY IN THE NOKIA APP
+        const page = await browser.newPage({ viewport: { width: 360, height: 480 } });
 
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
-        await page.waitForTimeout(1000);
+        await page.route('**/*', (route) => {
+            const reqUrl = route.request().url().toLowerCase();
+            if (reqUrl.match(/.*(ads|banners|analytics|trackers|pixel|beacon|doubleclick).*/)) {
+                return route.abort();
+            }
+            return route.continue();
+        });
+
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.waitForTimeout(1500);
 
         const screenshot = await page.screenshot({ type: 'jpeg', quality: 50 });
         res.writeHead(200, { 'Content-Type': 'image/jpeg' });
         res.end(screenshot);
 
     } catch (error) {
-        // This will send the exact error message to your PC so we can see it
         console.error(error);
         res.writeHead(500);
         res.end('Error: ' + error.message);
