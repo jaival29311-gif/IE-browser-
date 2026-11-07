@@ -23,7 +23,7 @@ const server = http.createServer(async (req, res) => {
         });
         
         // EXACT NOKIA 5800 SCREEN SIZE (360x640)
-        const page = await browser.newPage({ viewport: { width: 360, height: 640 } });
+        const page = await browser.newPage({ viewport: { width: 360, height: 550 } });
 
         await page.route('**/*', (route) => {
             const reqUrl = route.request().url().toLowerCase();
