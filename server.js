@@ -22,7 +22,7 @@ const server = http.createServer(async (req, res) => {
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process', '--no-zygote']
         });
         
-        // EXACT NOKIA 5800 SCREEN SIZE
+        // EXACT NOKIA 5800 SCREEN SIZE (360x640)
         const page = await browser.newPage({ viewport: { width: 360, height: 640 } });
 
         await page.route('**/*', (route) => {
