@@ -22,8 +22,8 @@ const server = http.createServer(async (req, res) => {
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process', '--no-zygote']
         });
         
-        // WE SET THE HEIGHT TO 480 SO IT FITS PERFECTLY IN THE NOKIA APP
-        const page = await browser.newPage({ viewport: { width: 360, height: 480 } });
+        // EXACT NOKIA 5800 SCREEN SIZE
+        const page = await browser.newPage({ viewport: { width: 360, height: 640 } });
 
         await page.route('**/*', (route) => {
             const reqUrl = route.request().url().toLowerCase();
