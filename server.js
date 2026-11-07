@@ -5,20 +5,19 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const targetUrl = url.searchParams.get('url');
     
-    // Health check
     if (req.url === '/') {
         res.writeHead(200);
-        return res.end('Fast Explorer Cloud is running!');
+        return res.end('Server is running');
     }
 
     if (!targetUrl) {
         res.writeHead(400);
-        return res.end('Please provide a valid ?url=');
+        return res.end('Missing URL');
     }
 
     let browser;
     try {
-        // Added flags to prevent crashes on low-memory servers
+        // These flags force the browser to use minimum memory
         browser = await chromium.launch({ 
             headless: true,
             args: [
@@ -26,35 +25,24 @@ const server = http.createServer(async (req, res) => {
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--single-process',
-                '--no-zygote'
+                '--no-zygote',
+                '--disable-gpu'
             ] 
         });
         const page = await browser.newPage({ viewport: { width: 360, height: 640 } });
 
-        // Ad blocker
-        await page.route('**/*', (route) => {
-            const reqUrl = route.request().url().toLowerCase();
-            if (reqUrl.match(/.*(ads|banners|analytics|trackers|pixel|beacon|doubleclick).*/)) {
-                return route.abort();
-            }
-            return route.continue();
-        });
-
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-        await page.waitForTimeout(1500);
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        await page.waitForTimeout(1000);
 
         const screenshot = await page.screenshot({ type: 'jpeg', quality: 50 });
-        
-        // Log success to Render dashboard
-        console.log(`Successfully captured ${targetUrl}`);
-        
         res.writeHead(200, { 'Content-Type': 'image/jpeg' });
         res.end(screenshot);
 
     } catch (error) {
-        console.error("CRASH ERROR:", error.message);
+        // This will send the exact error message to your PC so we can see it
+        console.error(error);
         res.writeHead(500);
-        res.end('Server error: ' + error.message);
+        res.end('Error: ' + error.message);
     } finally {
         if (browser) await browser.close();
     }
