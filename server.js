@@ -20,16 +20,27 @@ const server = http.createServer(async (req, res) => {
     try {
         browser = await chromium.launch({ 
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process', '--no-zygote', '--disable-gpu']
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox', 
+                '--disable-dev-shm-usage', 
+                '--single-process', 
+                '--no-zygote', 
+                '--disable-gpu'
+            ]
         });
         
-        // THE PERFECT MOBILE DISGUISE (Pixel 7 Chrome)
+        // THE INDIAN DISGUISE (Pixel 7 in New Delhi)
         const context = await browser.newContext({
             viewport: { width: 360, height: 640 },
             userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
             isMobile: true, 
             hasTouch: true, 
-            deviceScaleFactor: 1
+            deviceScaleFactor: 1,
+            locale: 'en-IN', 
+            timezoneId: 'Asia/Kolkata', 
+            geolocation: { latitude: 28.6139, longitude: 77.2090 }, 
+            permissions: ['geolocation']
         });
         
         const page = await context.newPage();
@@ -43,10 +54,10 @@ const server = http.createServer(async (req, res) => {
             return route.continue();
         });
 
-        // 1. Load the page and wait for the network to be quiet
+        // Load the page and wait for the network to be quiet
         await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 25000 }).catch(() => {});
 
-        // 2. Perform Touch Actions (if any)
+        // Perform Touch Actions (if any)
         if (action === 'tap') {
             const x = parseInt(url.searchParams.get('x') || '0');
             const y = parseInt(url.searchParams.get('y') || '0');
@@ -58,11 +69,10 @@ const server = http.createServer(async (req, res) => {
             await page.waitForTimeout(1000); 
         }
 
-        // 3. WAIT 2.5 SECONDS (This is what makes the Google homepage look perfect)
+        // Wait 2.5 seconds for final rendering (makes Google look perfect)
         await page.waitForTimeout(2500); 
 
         const currentUrl = page.url();
-        
         const screenshot = await page.screenshot({ type: 'jpeg', quality: 60 });
         
         res.writeHead(200, { 
