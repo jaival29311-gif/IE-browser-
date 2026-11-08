@@ -22,11 +22,18 @@ const server = http.createServer(async (req, res) => {
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process', '--no-zygote']
         });
         
-        // EXACTLY LIKE CLOUDFLARE: Just the viewport size, no mobile trickery
-        const page = await browser.newPage({ 
-            viewport: { width: 360, height: 640 } 
+        // THE ULTIMATE FIX: Force Mobile View, but lock the scale to 1
+        const context = await browser.newContext({
+            viewport: { width: 360, height: 640 },
+            userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            isMobile: true,
+            hasTouch: true,
+            deviceScaleFactor: 1
         });
+        
+        const page = await context.newPage();
 
+        // Block Ads
         await page.route('**/*', (route) => {
             const reqUrl = route.request().url().toLowerCase();
             if (reqUrl.match(/.*(ads|banners|analytics|trackers|pixel|beacon|doubleclick).*/)) {
@@ -35,11 +42,11 @@ const server = http.createServer(async (req, res) => {
             return route.continue();
         });
 
-        // Wait for the page to load completely
+        // Wait for network to be idle so the page fully loads
         await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 25000 });
         await page.waitForTimeout(1000); 
 
-        const screenshot = await page.screenshot({ type: 'jpeg', quality: 50 });
+        const screenshot = await page.screenshot({ type: 'jpeg', quality: 60 });
         res.writeHead(200, { 'Content-Type': 'image/jpeg' });
         res.end(screenshot);
 
