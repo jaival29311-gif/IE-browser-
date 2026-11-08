@@ -1,9 +1,14 @@
 const http = require('http');
-const { chromium } = require('playwright');
+
+// Use playwright-extra instead of standard playwright
+const { chromium } = require('playwright-extra');
+// Add the stealth plugin
+const stealth = require('puppeteer-extra-plugin-stealth')();
+chromium.use(stealth);
 
 const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
-    const targetUrl = url.searchParams.get('url');
+    let targetUrl = url.searchParams.get('url');
     const action = url.searchParams.get('action') || 'open';
     
     if (req.url === '/') {
@@ -20,49 +25,57 @@ const server = http.createServer(async (req, res) => {
     try {
         browser = await chromium.launch({ 
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process', '--no-zygote']
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--single-process',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
         });
         
+        // Mobile Disguise
         const context = await browser.newContext({
             viewport: { width: 360, height: 640 },
             userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-            isMobile: true, hasTouch: true, deviceScaleFactor: 1
+            isMobile: true, hasTouch: true, deviceScaleFactor: 1,
+            locale: 'en-US',
+            timezoneId: 'America/New_York'
         });
         
         const page = await context.newPage();
 
-        // Better Ad Blocker (only blocks clear ad domains, not images)
         await page.route('**/*', (route) => {
             const reqUrl = route.request().url().toLowerCase();
-            if (reqUrl.includes('doubleclick.net') || reqUrl.includes('googleadservices.com') || reqUrl.includes('analytics.js')) {
+            if (reqUrl.includes('doubleclick.net') || reqUrl.includes('googleadservices.com')) {
                 return route.abort();
             }
             return route.continue();
         });
 
-        // 1. Load the page
-        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 });
-        
-        // 2. Trigger Lazy Load (Scroll down 200px and back up)
-        await page.evaluate(() => window.scrollBy(0, 200));
-        await page.waitForTimeout(1000);
-        await page.evaluate(() => window.scrollBy(0, -200));
-        
-        // 3. Perform touch actions if requested
+        // GOOGLE SEARCH TRICK: If it's a Google search, append the Android client parameter
+        if (targetUrl.includes('google.com/search')) {
+            // Adding &client=ms-android-google tells Google it's the official Android App
+            if (!targetUrl.includes('&client=')) {
+                targetUrl += '&client=ms-android-google';
+            }
+        }
+
+        await page.goto(targetUrl, { waitUntil: 'load', timeout: 20000 }).catch(() => {});
+
         if (action === 'tap') {
             const x = parseInt(url.searchParams.get('x') || '0');
             const y = parseInt(url.searchParams.get('y') || '0');
             await page.mouse.click(x, y);
-            await page.waitForLoadState('networkidle').catch(() => {});
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(1500);
         } else if (action === 'scroll') {
             const dy = parseInt(url.searchParams.get('dy') || '300');
             await page.mouse.wheel(0, dy);
-            await page.waitForTimeout(1500);
+            await page.waitForTimeout(1000);
+        } else {
+            await page.waitForTimeout(2500); 
         }
-
-        // 4. WAIT 3 EXTRA SECONDS for images to draw
-        await page.waitForTimeout(3000); 
 
         const currentUrl = page.url();
         const screenshot = await page.screenshot({ type: 'jpeg', quality: 60 });
