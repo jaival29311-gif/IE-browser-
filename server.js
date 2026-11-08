@@ -22,7 +22,6 @@ const server = http.createServer(async (req, res) => {
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process', '--no-zygote']
         });
         
-        // THE ULTIMATE FIX: Force Mobile View, but lock the scale to 1
         const context = await browser.newContext({
             viewport: { width: 360, height: 640 },
             userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
@@ -33,7 +32,6 @@ const server = http.createServer(async (req, res) => {
         
         const page = await context.newPage();
 
-        // Block Ads
         await page.route('**/*', (route) => {
             const reqUrl = route.request().url().toLowerCase();
             if (reqUrl.match(/.*(ads|banners|analytics|trackers|pixel|beacon|doubleclick).*/)) {
@@ -42,9 +40,11 @@ const server = http.createServer(async (req, res) => {
             return route.continue();
         });
 
-        // Wait for network to be idle so the page fully loads
-        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 25000 });
-        await page.waitForTimeout(1000); 
+        // WAIT FOR FULL LOAD (30 seconds timeout, wait for network to be completely idle)
+        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 });
+        
+        // EXTRA PATIENCE: Wait 2 seconds to ensure animations/images are drawn
+        await page.waitForTimeout(2000); 
 
         const screenshot = await page.screenshot({ type: 'jpeg', quality: 60 });
         res.writeHead(200, { 'Content-Type': 'image/jpeg' });
