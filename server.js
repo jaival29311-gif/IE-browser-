@@ -22,8 +22,10 @@ const server = http.createServer(async (req, res) => {
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process', '--no-zygote']
         });
         
-        // EXACT NOKIA 5800 SIZE
-        const page = await browser.newPage({ viewport: { width: 360, height: 640 } });
+        // EXACTLY LIKE CLOUDFLARE: Just the viewport size, no mobile trickery
+        const page = await browser.newPage({ 
+            viewport: { width: 360, height: 640 } 
+        });
 
         await page.route('**/*', (route) => {
             const reqUrl = route.request().url().toLowerCase();
@@ -33,8 +35,9 @@ const server = http.createServer(async (req, res) => {
             return route.continue();
         });
 
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-        await page.waitForTimeout(1500);
+        // Wait for the page to load completely
+        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 25000 });
+        await page.waitForTimeout(1000); 
 
         const screenshot = await page.screenshot({ type: 'jpeg', quality: 50 });
         res.writeHead(200, { 'Content-Type': 'image/jpeg' });
