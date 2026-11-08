@@ -1,15 +1,9 @@
 const http = require('http');
-
-// Use playwright-extra instead of standard playwright
-const { chromium } = require('playwright-extra');
-// Add the stealth plugin
-const stealth = require('puppeteer-extra-plugin-stealth')();
-chromium.use(stealth);
+const { chromium } = require('playwright');
 
 const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
-    let targetUrl = url.searchParams.get('url');
-    const action = url.searchParams.get('action') || 'open';
+    const targetUrl = url.searchParams.get('url');
     
     if (req.url === '/') {
         res.writeHead(200);
@@ -35,47 +29,24 @@ const server = http.createServer(async (req, res) => {
             ]
         });
         
-        // Mobile Disguise
         const context = await browser.newContext({
             viewport: { width: 360, height: 640 },
-            userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            // THE MAGIC TRICK: Pretending to be the official Google App!
+            userAgent: 'GoogleApp/14.30.13.26.arm64 (Linux; U; Android 13; en_US; Pixel 7; Build/TQ3A.230805.001; Cronet/117.0.5938.60)',
             isMobile: true, hasTouch: true, deviceScaleFactor: 1,
             locale: 'en-US',
-            timezoneId: 'America/New_York'
+            extraHTTPHeaders: {
+                'Accept-Language': 'en-US,en;q=0.9',
+            }
         });
         
         const page = await context.newPage();
 
-        await page.route('**/*', (route) => {
-            const reqUrl = route.request().url().toLowerCase();
-            if (reqUrl.includes('doubleclick.net') || reqUrl.includes('googleadservices.com')) {
-                return route.abort();
-            }
-            return route.continue();
-        });
+        // Load the page
+        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 25000 }).catch(() => {});
 
-        // GOOGLE SEARCH TRICK: If it's a Google search, append the Android client parameter
-        if (targetUrl.includes('google.com/search')) {
-            // Adding &client=ms-android-google tells Google it's the official Android App
-            if (!targetUrl.includes('&client=')) {
-                targetUrl += '&client=ms-android-google';
-            }
-        }
-
-        await page.goto(targetUrl, { waitUntil: 'load', timeout: 20000 }).catch(() => {});
-
-        if (action === 'tap') {
-            const x = parseInt(url.searchParams.get('x') || '0');
-            const y = parseInt(url.searchParams.get('y') || '0');
-            await page.mouse.click(x, y);
-            await page.waitForTimeout(1500);
-        } else if (action === 'scroll') {
-            const dy = parseInt(url.searchParams.get('dy') || '300');
-            await page.mouse.wheel(0, dy);
-            await page.waitForTimeout(1000);
-        } else {
-            await page.waitForTimeout(2500); 
-        }
+        // Wait 3 seconds for Google to render the results
+        await page.waitForTimeout(3000); 
 
         const currentUrl = page.url();
         const screenshot = await page.screenshot({ type: 'jpeg', quality: 60 });
