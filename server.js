@@ -11,6 +11,7 @@ const server = http.createServer(async (req, res) => {
         return res.end();
     }
 
+    // THE UI WITH THE TYPING BOX
     if (req.url === '/test') {
         res.writeHead(200, { 'Content-Type': 'text/html' });
         return res.end(`
@@ -36,13 +37,13 @@ const server = http.createServer(async (req, res) => {
     </div>
     
     <div id="keyboard-bridge">
-        <input type="text" id="text-input" placeholder="Type here to type on server..." />
+        <input type="text" id="text-input" placeholder="Type here..." />
         <button id="send-btn" onclick="sendText()">Send</button>
     </div>
 
     <script>
         const CLOUD_URL = window.location.origin + "/";
-        let currentUrl = "https://www.instagram.com"; 
+        let currentUrl = "https://www.bing.com"; // Starts on Bing so you see images immediately
         let startY = 0;
 
         const img = document.getElementById('screen');
@@ -128,6 +129,7 @@ const server = http.createServer(async (req, res) => {
 
     let browser;
     try {
+        // LIGHTWEIGHT LAUNCH (Prevents memory crash)
         browser = await chromium.launch({ 
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process', '--no-zygote', '--disable-gpu']
@@ -142,17 +144,15 @@ const server = http.createServer(async (req, res) => {
         
         const page = await context.newPage();
 
-        // --- THE MAGIC FIX: BLOCK HEAVY STUFF ON INSTAGRAM ---
+        // Block heavy stuff ONLY on Instagram to prevent crashes
         await page.route('**/*', (route) => {
             const reqUrl = route.request().url().toLowerCase();
             const type = route.request().resourceType();
             
-            // Block ads everywhere
             if (reqUrl.includes('doubleclick.net') || reqUrl.includes('googleadservices.com')) {
                 return route.abort();
             }
 
-            // If we are on Instagram, block videos, images, and fonts to prevent the crash!
             if (reqUrl.includes('instagram.com') || reqUrl.includes('facebook.com')) {
                 if (type === 'image' || type === 'media' || type === 'font') {
                     return route.abort();
@@ -162,25 +162,28 @@ const server = http.createServer(async (req, res) => {
             return route.continue();
         });
 
-        if (action === 'open') {
+        if (action === 'open' || action === 'refresh') {
             await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
-            await page.waitForTimeout(3000); 
+            
+            // SMART WAIT: 4 seconds for search engines, 2.5 for others
+            if (targetUrl.includes('google.com') || targetUrl.includes('bing.com') || targetUrl.includes('duckduckgo.com')) {
+                await page.waitForTimeout(4000); 
+            } else {
+                await page.waitForTimeout(2500); 
+            }
+
         } 
-        else if (action === 'refresh') {
-            await page.reload({ waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
-            await page.waitForTimeout(3000); 
-        }
         else if (action === 'tap') {
             const x = parseInt(url.searchParams.get('x') || '0');
             const y = parseInt(url.searchParams.get('y') || '0');
             await page.mouse.click(x, y);
-            // WAIT LONGER AFTER A TAP (Instagram needs time to render the new screen)
-            await page.waitForTimeout(3500); 
+            // FAST WAIT FOR TAPS (So CAPTCHA is quick)
+            await page.waitForTimeout(1500); 
         } 
         else if (action === 'scroll') {
             const dy = parseInt(url.searchParams.get('dy') || '300');
             await page.mouse.wheel(0, dy);
-            await page.waitForTimeout(1500); 
+            await page.waitForTimeout(1000); 
         }
         else if (action === 'type' && textToType) {
             await page.keyboard.type(textToType, { delay: 50 }); 
@@ -200,6 +203,7 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(500);
         res.end('Error: ' + error.message);
     } finally {
+        // MEMORY SAVER: Always close the browser to keep Render alive
         if (browser) await browser.close();
     }
 });
