@@ -56,11 +56,13 @@ const server = http.createServer(async (req, res) => {
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
-        body { margin: 0; padding: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        #screen-container { flex: 1; position: relative; }
+        html, body { margin: 0; padding: 0; background: #000; height: 100%; overflow: hidden; }
+        body { display: flex; flex-direction: column; }
+        #screen-container { flex: 1; position: relative; overflow: hidden; }
         #screen { width: 100%; height: 100%; object-fit: contain; touch-action: none; }
         #status { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.7); padding: 5px; border-radius: 5px; z-index: 10; font-family: sans-serif; font-size: 12px; }
-        #keyboard-bridge { background: #222; padding: 10px; display: flex; gap: 5px; }
+        /* THIS MAKES SURE THE KEYBOARD IS ALWAYS VISIBLE */
+        #keyboard-bridge { background: #222; padding: 10px; display: flex; gap: 5px; flex-shrink: 0; }
         #text-input { flex: 1; padding: 10px; font-size: 16px; border-radius: 5px; border: none; }
         #send-btn { padding: 10px 15px; font-size: 16px; background: #007bff; color: white; border: none; border-radius: 5px; font-weight: bold; }
     </style>
@@ -71,7 +73,6 @@ const server = http.createServer(async (req, res) => {
         <img id="screen" src="" />
     </div>
     
-    <!-- THE NEW KEYBOARD BRIDGE -->
     <div id="keyboard-bridge">
         <input type="text" id="text-input" placeholder="Type here to send to server..." />
         <button id="send-btn" onclick="sendText()">Send</button>
@@ -115,11 +116,10 @@ const server = http.createServer(async (req, res) => {
             const text = textInput.value;
             if (text) {
                 loadPage('type', 0, 0, 0, text);
-                textInput.value = ""; // Clear input after sending
+                textInput.value = ""; 
             }
         }
 
-        // Allow pressing "Enter" on the keyboard to send
         textInput.addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
                 sendText();
@@ -188,10 +188,8 @@ const server = http.createServer(async (req, res) => {
             await page.mouse.wheel(0, dy);
             await page.waitForTimeout(1000); 
         }
-        // --- NEW: THE TYPING BRIDGE ---
         else if (action === 'type' && textToType) {
-            // Type the text into whatever is currently focused on the webpage
-            await page.keyboard.type(textToType, { delay: 100 }); // 100ms delay per letter looks human
+            await page.keyboard.type(textToType, { delay: 100 }); 
             await page.waitForTimeout(1000); 
         }
 
