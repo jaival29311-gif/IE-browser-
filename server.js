@@ -2,7 +2,6 @@ const http = require('http');
 const { chromium } = require('playwright');
 
 const server = http.createServer(async (req, res) => {
-    // 1. CORS Headers (Allows the Android HTML page to talk to the server)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Expose-Headers', 'X-Current-Url');
@@ -12,7 +11,6 @@ const server = http.createServer(async (req, res) => {
         return res.end();
     }
 
-    // 2. The Android Test UI (with the text box at the bottom)
     if (req.url === '/test') {
         res.writeHead(200, { 'Content-Type': 'text/html' });
         return res.end(`
@@ -44,7 +42,7 @@ const server = http.createServer(async (req, res) => {
 
     <script>
         const CLOUD_URL = window.location.origin + "/";
-        let currentUrl = "https://www.instagram.com"; // Starts on Instagram!
+        let currentUrl = "https://www.instagram.com"; 
         let startY = 0;
 
         const img = document.getElementById('screen');
@@ -54,7 +52,7 @@ const server = http.createServer(async (req, res) => {
         loadPage("open");
 
         function loadPage(action, x = 0, y = 0, dy = 0, text = "") {
-            status.innerText = "Loading...";
+            status.innerText = "Loading... (Please wait)";
             let reqUrl = CLOUD_URL + "?url=" + encodeURIComponent(currentUrl) + "&action=" + action;
             if (action === 'tap') reqUrl += "&x=" + x + "&y=" + y;
             if (action === 'scroll') reqUrl += "&dy=" + dy;
@@ -72,7 +70,7 @@ const server = http.createServer(async (req, res) => {
                     setTimeout(() => status.innerText = "", 1500);
                 })
                 .catch(err => {
-                    status.innerText = "Error: Server busy. Please try again.";
+                    status.innerText = "Error: Server busy or crashed. Tap to retry.";
                 });
         }
 
@@ -113,7 +111,6 @@ const server = http.createServer(async (req, res) => {
         `);
     }
 
-    // 3. Handle API Requests
     const url = new URL(req.url, `http://${req.headers.host}`);
     const targetUrl = url.searchParams.get('url');
     const action = url.searchParams.get('action') || 'open';
@@ -131,59 +128,59 @@ const server = http.createServer(async (req, res) => {
 
     let browser;
     try {
-        // LIGHTWEIGHT LAUNCH (Prevents memory crash)
         browser = await chromium.launch({ 
             headless: true,
-            args: [
-                '--no-sandbox', 
-                '--disable-setuid-sandbox', 
-                '--disable-dev-shm-usage', 
-                '--single-process', 
-                '--no-zygote', 
-                '--disable-gpu'
-            ]
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process', '--no-zygote', '--disable-gpu']
         });
         
         const context = await browser.newContext({
             viewport: { width: 360, height: 640 },
             userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-            isMobile: true, 
-            hasTouch: true, 
-            deviceScaleFactor: 1,
-            locale: 'en-IN', 
-            timezoneId: 'Asia/Kolkata'
+            isMobile: true, hasTouch: true, deviceScaleFactor: 1,
+            locale: 'en-IN', timezoneId: 'Asia/Kolkata'
         });
         
         const page = await context.newPage();
 
-        // Block heavy ads
+        // --- THE MAGIC FIX: BLOCK HEAVY STUFF ON INSTAGRAM ---
         await page.route('**/*', (route) => {
             const reqUrl = route.request().url().toLowerCase();
+            const type = route.request().resourceType();
+            
+            // Block ads everywhere
             if (reqUrl.includes('doubleclick.net') || reqUrl.includes('googleadservices.com')) {
                 return route.abort();
             }
+
+            // If we are on Instagram, block videos, images, and fonts to prevent the crash!
+            if (reqUrl.includes('instagram.com') || reqUrl.includes('facebook.com')) {
+                if (type === 'image' || type === 'media' || type === 'font') {
+                    return route.abort();
+                }
+            }
+            
             return route.continue();
         });
 
-        // Perform Actions
         if (action === 'open') {
             await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
-            await page.waitForTimeout(2500); 
+            await page.waitForTimeout(3000); 
         } 
         else if (action === 'refresh') {
             await page.reload({ waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
-            await page.waitForTimeout(2500); 
+            await page.waitForTimeout(3000); 
         }
         else if (action === 'tap') {
             const x = parseInt(url.searchParams.get('x') || '0');
             const y = parseInt(url.searchParams.get('y') || '0');
             await page.mouse.click(x, y);
-            await page.waitForTimeout(2000); 
+            // WAIT LONGER AFTER A TAP (Instagram needs time to render the new screen)
+            await page.waitForTimeout(3500); 
         } 
         else if (action === 'scroll') {
             const dy = parseInt(url.searchParams.get('dy') || '300');
             await page.mouse.wheel(0, dy);
-            await page.waitForTimeout(1000); 
+            await page.waitForTimeout(1500); 
         }
         else if (action === 'type' && textToType) {
             await page.keyboard.type(textToType, { delay: 50 }); 
@@ -191,7 +188,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         const currentUrl = page.url();
-        const screenshot = await page.screenshot({ type: 'jpeg', quality: 60 });
+        const screenshot = await page.screenshot({ type: 'jpeg', quality: 50 });
         
         res.writeHead(200, { 
             'Content-Type': 'image/jpeg',
@@ -203,7 +200,6 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(500);
         res.end('Error: ' + error.message);
     } finally {
-        // CRITICAL: Close browser immediately to prevent memory crash
         if (browser) await browser.close();
     }
 });
