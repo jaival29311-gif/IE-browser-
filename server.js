@@ -1,44 +1,8 @@
 const http = require('http');
 const { chromium } = require('playwright');
 
-let globalBrowser = null;
-let globalContext = null;
-let globalPage = null;
-
-async function getBrowserPage() {
-    try {
-        if (globalBrowser && globalBrowser.isConnected()) {
-            return globalPage;
-        }
-    } catch (e) {}
-
-    globalBrowser = await chromium.launch({ 
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process', '--no-zygote', '--disable-gpu']
-    });
-    
-    globalContext = await globalBrowser.newContext({
-        viewport: { width: 360, height: 640 },
-        userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-        isMobile: true, hasTouch: true, deviceScaleFactor: 1,
-        locale: 'en-IN', timezoneId: 'Asia/Kolkata', 
-        geolocation: { latitude: 28.6139, longitude: 77.2090 }, permissions: ['geolocation']
-    });
-    
-    globalPage = await globalContext.newPage();
-    
-    await globalPage.route('**/*', (route) => {
-        const reqUrl = route.request().url().toLowerCase();
-        if (reqUrl.includes('doubleclick.net') || reqUrl.includes('googleadservices.com')) {
-            return route.abort();
-        }
-        return route.continue();
-    });
-
-    return globalPage;
-}
-
 const server = http.createServer(async (req, res) => {
+    // 1. CORS Headers (Allows the Android HTML page to talk to the server)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Expose-Headers', 'X-Current-Url');
@@ -48,6 +12,7 @@ const server = http.createServer(async (req, res) => {
         return res.end();
     }
 
+    // 2. The Android Test UI (with the text box at the bottom)
     if (req.url === '/test') {
         res.writeHead(200, { 'Content-Type': 'text/html' });
         return res.end(`
@@ -61,7 +26,6 @@ const server = http.createServer(async (req, res) => {
         #screen-container { flex: 1; position: relative; overflow: hidden; }
         #screen { width: 100%; height: 100%; object-fit: contain; touch-action: none; }
         #status { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.7); padding: 5px; border-radius: 5px; z-index: 10; font-family: sans-serif; font-size: 12px; }
-        /* THIS MAKES SURE THE KEYBOARD IS ALWAYS VISIBLE */
         #keyboard-bridge { background: #222; padding: 10px; display: flex; gap: 5px; flex-shrink: 0; }
         #text-input { flex: 1; padding: 10px; font-size: 16px; border-radius: 5px; border: none; }
         #send-btn { padding: 10px 15px; font-size: 16px; background: #007bff; color: white; border: none; border-radius: 5px; font-weight: bold; }
@@ -74,13 +38,13 @@ const server = http.createServer(async (req, res) => {
     </div>
     
     <div id="keyboard-bridge">
-        <input type="text" id="text-input" placeholder="Type here to send to server..." />
+        <input type="text" id="text-input" placeholder="Type here to type on server..." />
         <button id="send-btn" onclick="sendText()">Send</button>
     </div>
 
     <script>
         const CLOUD_URL = window.location.origin + "/";
-        let currentUrl = "https://google.com";
+        let currentUrl = "https://www.instagram.com"; // Starts on Instagram!
         let startY = 0;
 
         const img = document.getElementById('screen');
@@ -105,10 +69,10 @@ const server = http.createServer(async (req, res) => {
                 .then(blob => {
                     img.src = URL.createObjectURL(blob);
                     status.innerText = "Page Loaded";
-                    setTimeout(() => status.innerText = "", 2000);
+                    setTimeout(() => status.innerText = "", 1500);
                 })
                 .catch(err => {
-                    status.innerText = "Error: Server sleeping.";
+                    status.innerText = "Error: Server busy. Please try again.";
                 });
         }
 
@@ -121,9 +85,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         textInput.addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') {
-                sendText();
-            }
+            if (e.key === 'Enter') sendText();
         });
 
         img.addEventListener('touchstart', (e) => {
@@ -151,6 +113,7 @@ const server = http.createServer(async (req, res) => {
         `);
     }
 
+    // 3. Handle API Requests
     const url = new URL(req.url, `http://${req.headers.host}`);
     const targetUrl = url.searchParams.get('url');
     const action = url.searchParams.get('action') || 'open';
@@ -158,7 +121,7 @@ const server = http.createServer(async (req, res) => {
     
     if (req.url === '/') {
         res.writeHead(200);
-        return res.end('Server is running.');
+        return res.end('Server is running FAST.');
     }
 
     if (!targetUrl) {
@@ -166,16 +129,50 @@ const server = http.createServer(async (req, res) => {
         return res.end('Missing URL');
     }
 
+    let browser;
     try {
-        const page = await getBrowserPage();
+        // LIGHTWEIGHT LAUNCH (Prevents memory crash)
+        browser = await chromium.launch({ 
+            headless: true,
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox', 
+                '--disable-dev-shm-usage', 
+                '--single-process', 
+                '--no-zygote', 
+                '--disable-gpu'
+            ]
+        });
+        
+        const context = await browser.newContext({
+            viewport: { width: 360, height: 640 },
+            userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            isMobile: true, 
+            hasTouch: true, 
+            deviceScaleFactor: 1,
+            locale: 'en-IN', 
+            timezoneId: 'Asia/Kolkata'
+        });
+        
+        const page = await context.newPage();
 
+        // Block heavy ads
+        await page.route('**/*', (route) => {
+            const reqUrl = route.request().url().toLowerCase();
+            if (reqUrl.includes('doubleclick.net') || reqUrl.includes('googleadservices.com')) {
+                return route.abort();
+            }
+            return route.continue();
+        });
+
+        // Perform Actions
         if (action === 'open') {
-            await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 25000 }).catch(() => {});
-            await page.waitForTimeout(2000);
+            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
+            await page.waitForTimeout(2500); 
         } 
         else if (action === 'refresh') {
-            await page.reload({ waitUntil: 'networkidle', timeout: 25000 }).catch(() => {});
-            await page.waitForTimeout(4000); 
+            await page.reload({ waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
+            await page.waitForTimeout(2500); 
         }
         else if (action === 'tap') {
             const x = parseInt(url.searchParams.get('x') || '0');
@@ -189,7 +186,7 @@ const server = http.createServer(async (req, res) => {
             await page.waitForTimeout(1000); 
         }
         else if (action === 'type' && textToType) {
-            await page.keyboard.type(textToType, { delay: 100 }); 
+            await page.keyboard.type(textToType, { delay: 50 }); 
             await page.waitForTimeout(1000); 
         }
 
@@ -203,9 +200,11 @@ const server = http.createServer(async (req, res) => {
         res.end(screenshot);
 
     } catch (error) {
-        if (globalBrowser) { await globalBrowser.close().catch(()=>{}); globalBrowser = null; }
         res.writeHead(500);
         res.end('Error: ' + error.message);
+    } finally {
+        // CRITICAL: Close browser immediately to prevent memory crash
+        if (browser) await browser.close();
     }
 });
 
