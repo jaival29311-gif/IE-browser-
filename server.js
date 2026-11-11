@@ -2,6 +2,7 @@ const http = require('http');
 const { chromium } = require('playwright');
 
 const server = http.createServer(async (req, res) => {
+    // CORS Headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Expose-Headers', 'X-Current-Url');
@@ -11,7 +12,9 @@ const server = http.createServer(async (req, res) => {
         return res.end();
     }
 
-    // THE UI WITH THE TYPING BOX
+    // ==========================================
+    // THE ANDROID TEST UI (With Typing Box)
+    // ==========================================
     if (req.url === '/test') {
         res.writeHead(200, { 'Content-Type': 'text/html' });
         return res.end(`
@@ -37,13 +40,13 @@ const server = http.createServer(async (req, res) => {
     </div>
     
     <div id="keyboard-bridge">
-        <input type="text" id="text-input" placeholder="Type here..." />
+        <input type="text" id="text-input" placeholder="Type here to type on server..." />
         <button id="send-btn" onclick="sendText()">Send</button>
     </div>
 
     <script>
         const CLOUD_URL = window.location.origin + "/";
-        let currentUrl = "https://www.bing.com"; // Starts on Bing so you see images immediately
+        let currentUrl = "https://www.bing.com"; 
         let startY = 0;
 
         const img = document.getElementById('screen');
@@ -112,6 +115,9 @@ const server = http.createServer(async (req, res) => {
         `);
     }
 
+    // ==========================================
+    // API LOGIC
+    // ==========================================
     const url = new URL(req.url, `http://${req.headers.host}`);
     const targetUrl = url.searchParams.get('url');
     const action = url.searchParams.get('action') || 'open';
@@ -129,10 +135,17 @@ const server = http.createServer(async (req, res) => {
 
     let browser;
     try {
-        // LIGHTWEIGHT LAUNCH (Prevents memory crash)
+        // LIGHTWEIGHT LAUNCH (Prevents memory crash on Render)
         browser = await chromium.launch({ 
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process', '--no-zygote', '--disable-gpu']
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox', 
+                '--disable-dev-shm-usage', 
+                '--single-process', 
+                '--no-zygote', 
+                '--disable-gpu'
+            ]
         });
         
         const context = await browser.newContext({
@@ -144,15 +157,17 @@ const server = http.createServer(async (req, res) => {
         
         const page = await context.newPage();
 
-        // Block heavy stuff ONLY on Instagram to prevent crashes
+        // BLOCK HEAVY STUFF ONLY ON INSTAGRAM
         await page.route('**/*', (route) => {
             const reqUrl = route.request().url().toLowerCase();
             const type = route.request().resourceType();
             
+            // 1. Block ads everywhere
             if (reqUrl.includes('doubleclick.net') || reqUrl.includes('googleadservices.com')) {
                 return route.abort();
             }
-
+            
+            // 2. Text-only mode for Instagram to prevent 512MB RAM crash
             if (reqUrl.includes('instagram.com') || reqUrl.includes('facebook.com')) {
                 if (type === 'image' || type === 'media' || type === 'font') {
                     return route.abort();
@@ -165,20 +180,33 @@ const server = http.createServer(async (req, res) => {
         if (action === 'open' || action === 'refresh') {
             await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
             
-            // SMART WAIT: 4 seconds for search engines, 2.5 for others
-            if (targetUrl.includes('google.com') || targetUrl.includes('bing.com') || targetUrl.includes('duckduckgo.com')) {
-                await page.waitForTimeout(4000); 
+            // SMART WAIT
+            if (targetUrl.includes('youtube.com')) {
+                await page.waitForTimeout(4000); // Wait 4s for YouTube thumbnails
+            } else if (targetUrl.includes('bing.com') || targetUrl.includes('google.com') || targetUrl.includes('duckduckgo.com')) {
+                await page.waitForTimeout(3500); // Wait 3.5s for Search Engine images
             } else {
-                await page.waitForTimeout(2500); 
+                await page.waitForTimeout(2500); // Wait 2.5s for normal sites
             }
 
         } 
         else if (action === 'tap') {
             const x = parseInt(url.searchParams.get('x') || '0');
             const y = parseInt(url.searchParams.get('y') || '0');
+            
+            // THE COILED MOUSE TRICK (For CAPTCHA)
+            let startX = Math.max(0, x - 50);
+            let startY = Math.max(0, y - 50);
+            await page.mouse.move(startX, startY);
+            for (let i = 1; i <= 5; i++) {
+                const moveX = startX + ((x - startX) * (i / 5));
+                const moveY = startY + ((y - startY) * (i / 5)) + (Math.random() * 10);
+                await page.mouse.move(moveX, moveY);
+                await page.waitForTimeout(50); 
+            }
+            
             await page.mouse.click(x, y);
-            // FAST WAIT FOR TAPS (So CAPTCHA is quick)
-            await page.waitForTimeout(1500); 
+            await page.waitForTimeout(1500); // Fast wait for taps
         } 
         else if (action === 'scroll') {
             const dy = parseInt(url.searchParams.get('dy') || '300');
@@ -203,7 +231,7 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(500);
         res.end('Error: ' + error.message);
     } finally {
-        // MEMORY SAVER: Always close the browser to keep Render alive
+        // DESTROY BROWSER TO SAVE RAM
         if (browser) await browser.close();
     }
 });
